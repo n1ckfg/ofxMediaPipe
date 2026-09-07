@@ -1,63 +1,87 @@
 # ofxMediaPipe Architecture
 
-This document describes the architectural design and implementation details of the `ofxMediaPipe` openFrameworks addon.
+## The build problem
 
-## High-Level Overview
+MediaPipe builds only under Bazel. openFrameworks builds under Make. Nothing
+reconciles those two, so the addon does not try: MediaPipe is compiled once,
+ahead of time, into a shared library, and the addon links that as a prebuilt
+dependency. `scripts/build_mediapipe.sh` owns that step.
 
-`ofxMediaPipe` serves as a bridge between **openFrameworks** and **Google's MediaPipe**. Instead of relying on MediaPipe's low-level Framework API (CalculatorGraphs), it utilizes the **MediaPipe Tasks C++ API**. This provides a simpler, higher-level interface for common machine learning vision tasks such as pose detection, face landmarking, and hand tracking.
+## Which MediaPipe API
 
-Because MediaPipe is natively built using the Bazel build system, which is incompatible with openFrameworks' standard Make/CMake build pipeline, the addon is designed around a **pre-built shared library** dependency model.
+MediaPipe exposes its vision tasks three ways, and the choice matters:
 
-## Directory Structure
+| API | Verdict |
+|---|---|
+| Framework (`CalculatorGraph`, `.pbtxt`) | Legacy. Gesture recognition would have to be hand-written from hand landmarks. |
+| Tasks **C++** (`mediapipe/tasks/cc/...`) | Pulls protobuf, absl and the MediaPipe header tree into the app's compile *and* link. |
+| Tasks **C** (`mediapipe/tasks/c/...`) | Flat, stable, hides everything behind one `.so`. **Chosen.** |
 
-```text
-ofxMediaPipe/
-├── addon_config.mk       # Addon configuration for the OF Project Generator
-├── src/                  # Core openFrameworks wrapper classes
-│   ├── PoseLandmarker.h  # Wrapper for mediapipe::tasks::vision::pose_landmarker
-│   └── PoseLandmarker.cpp
-├── libs/                 # Third-party dependencies and models
-│   └── mediapipe/
-│       ├── include/      # MediaPipe C++ headers
-│       ├── lib/          # Pre-compiled shared libraries (e.g., linuxarmv7l/libmediapipe.so)
-│       └── models/       # MediaPipe .task model files
-├── examples/             # openFrameworks example projects
-│   └── PoseWebcamExample/
-├── README.md             # Setup and usage instructions
-├── PLAN.md               # Current status and remaining tasks
-└── RESEARCH.md           # Research notes and MediaPipe API details
+The C API also ships the trained canned-gesture classifier, so gesture
+recognition is a real model rather than finger-angle heuristics.
+
+## One shared library
+
+Upstream defines a separate `cc_binary(linkshared)` per task —
+`libpose_landmarker.so`, `libgesture_recognizer.so`. Each statically links the
+whole MediaPipe, absl and TFLite runtime. Loading both into one process means
+two private copies of that runtime in one address space.
+
+So the build script adds its own Bazel target,
+`//mediapipe/tasks/c/vision/ofx:libmediapipe_tasks_vision.so`, depending on the
+`*_c_lib` targets of both tasks (they are marked `alwayslink = 1`, so their
+symbols survive). One library, one runtime.
+
+## Layers
+
+```
+        ofApp
+          |
+   Tracker (ofThread)          <- owns the worker thread and frame hand-off
+          |
+   PoseLandmarker / GestureRecognizer   <- one task each, synchronous
+          |
+   internal::  makeImage, toLandmarks, toCategory, ScopedImage
+          |
+   MediaPipe Tasks Vision C API  (libmediapipe_tasks_vision.so)
 ```
 
-## Core Components
+### Type translation
 
-### 1. Wrapper Classes (e.g., `PoseLandmarker`)
-The addon abstracts MediaPipe's complex initialization and execution pipelines into simple, OF-friendly C++ classes.
-- **Initialization (`setup`)**: Configures the underlying MediaPipe `BaseOptions` and `PoseLandmarkerOptions`, loads the `.task` model from the OF data path, and creates the task instance.
-- **Inference (`detect`, `detectForVideo`)**: Takes `ofPixels` as input, converts it to a MediaPipe-compatible image format, and runs synchronous inference.
+`internal::` converts between MediaPipe's C structs and the addon's types:
+`NormalizedLandmark`/`Landmark` become `ofxMediaPipe::Landmark` (a `glm::vec3`
+plus visibility and presence), and `Category` becomes `ofxMediaPipe::Category`.
 
-### 2. Data Conversion
-MediaPipe expects image data in specific internal formats (`mediapipe::Image` backed by `mediapipe::ImageFrame`). The wrapper classes handle the translation from openFrameworks' `ofPixels`:
-- Verifies the input format (e.g., 3-channel RGB).
-- Wraps the raw pixel data into an `absl::make_unique<mediapipe::ImageFrame>`.
-- Converts the `ImageFrame` into a `mediapipe::Image` object ready for the Tasks API.
+`ofPixels` becomes an `MpImage` in `internal::makeImage`. MediaPipe accepts only
+RGB and RGBA, so any other pixel format is converted once into a scratch buffer
+that persists across frames. `ScopedImage` owns the resulting handle so it is
+released on every return path, including the error ones.
 
-### 3. Result Translation
-MediaPipe returns deeply nested, protobuf-derived structures. `ofxMediaPipe` translates these into OF-native data structures for easier use in graphics programming:
-- `NormalizedLandmark` objects are converted into standard `glm::vec3` vectors.
-- Nested structures are simplified into native `std::vector` collections (e.g., `PoseLandmarkerResult`), providing intuitive access to properties like `position`, `visibility`, and `presence`.
+### Threading
 
-## Build System & Dependency Strategy
+`Tracker` runs both models on one worker thread. Two properties matter:
 
-Integrating Bazel-based projects into openFrameworks is historically difficult. `ofxMediaPipe` sidesteps this by decoupling the build processes:
+- **All MediaPipe calls for a task happen on the thread that created it.** The
+  models are therefore loaded inside `threadedFunction()`, not in `setup()`.
+  `setup()` returns immediately; `isReady()` and `isFailed()` report the result.
+- **Frames are dropped, not queued.** `setPixels()` overwrites any frame the
+  worker has not yet picked up. Queueing would make results fall progressively
+  further behind the live camera, since inference is slower than capture.
 
-1. **Standalone Bazel Build**: A shared library (`libmediapipe.so` or platform equivalent) is compiled separately using tools like [libmediapipe](https://github.com/cpvrlab/libmediapipe).
-2. **openFrameworks Integration**: `addon_config.mk` is configured to link against this pre-built library. It specifies include paths (`libs/mediapipe/include`), library paths, and system dependencies (OpenCV, protobuf, abseil).
+`stop()` sets the stop flag and then signals the input condition variable, so a
+worker parked waiting for a frame wakes up to observe the request rather than
+blocking until the next frame arrives.
 
-This architecture allows the addon to be easily integrated into user projects via the standard **openFrameworks Project Generator**.
+### Timestamps
 
-## Execution Modes
+Both tasks run in MediaPipe's VIDEO mode, which keeps tracking state between
+frames and rejects any timestamp that does not strictly increase. `Tracker`
+keeps its own monotonic counter rather than trusting frame arrival times.
 
-The MediaPipe Tasks API supports different running modes. `ofxMediaPipe` conceptually wraps these to fit common OF paradigms:
-- **IMAGE Mode**: (`detect(const ofPixels&)`) - For single, unrelated images. Each frame is processed independently without temporal tracking.
-- **VIDEO Mode**: (`detectForVideo(const ofPixels&, int64_t timestamp_ms)`) - Ideal for webcam feeds (used in `PoseWebcamExample`). Uses temporal tracking across monotonically increasing timestamps for better performance and jitter reduction.
-- **LIVE_STREAM Mode**: (Planned) - Asynchronous processing with callbacks. This will allow inference to happen on a background thread without blocking the main OF `update()` loop.
+## Public surface
+
+MediaPipe's headers are included only from the addon's `.cpp` files; the task
+classes hold their C handles through a pimpl. Including `ofxMediaPipe.h`
+therefore does not drop MediaPipe's global-scope `RunningMode` enum, or its
+`Landmark` and `Category` structs, into the app's global namespace — which
+matters, since the addon defines its own types by those names.
