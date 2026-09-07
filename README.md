@@ -27,9 +27,10 @@ cd addons/ofxMediaPipe
 ./scripts/build_mediapipe.sh
 ```
 
-The script fetches Bazel and the MediaPipe sources, points MediaPipe at your
-system OpenCV, builds the library, then installs the library, its headers and
-the two `.task` models into `libs/mediapipe/`. Options:
+The script fetches Bazel (the exact version MediaPipe pins in `.bazelversion`)
+and the MediaPipe sources, applies two portability patches to that checkout,
+builds the library, then installs the library, its headers and the two `.task`
+models into `libs/mediapipe/`. Options:
 
 ```
 --version v0.10.35   MediaPipe tag to build
@@ -40,6 +41,16 @@ the two `.task` models into `libs/mediapipe/`. Options:
 Requirements: `git`, `curl`, `python3` with `numpy`, `g++`, and OpenCV 4
 (`apt install libopencv-dev python3-numpy`). Budget a few hours and ~20 GB of
 free disk on a Raspberry Pi 4; 8 GB of RAM is comfortable at `--jobs 3`.
+
+The two patches are to MediaPipe's own tree, not to this addon, and both are
+upstream portability gaps rather than preferences: OpenCV 4's header paths are
+commented out in `third_party/opencv_linux.BUILD`, and `CompileTimeString` does
+not compile under GCC. Skipping the second one costs you a two-hour build that
+fails near the end. ARCHITECTURE.md explains both.
+
+Verified with MediaPipe v0.10.35 on aarch64 (Raspberry Pi OS bookworm, GCC 12,
+OpenCV 4.6). Nothing here is Pi-specific except the platform name in
+`addon_config.mk`; `linux64` is wired up the same way.
 
 Then copy the models next to your app:
 
@@ -139,7 +150,17 @@ ofxMediaPipe/
     └── models/*.task
 ```
 
-## Example
+## Examples
 
-`apps/myApps/MediaPipeExample` runs both models on a live feed and auto-detects
-its video source (Pi camera, USB webcam, movie file, still image, or synthetic).
+| Example | Shows |
+|---|---|
+| `examples/example_pose` | Basic pose tracking — 33 landmarks, reading individual joints by name, skipping occluded ones. |
+| `examples/example_gesture` | Pose tracking *and* gesture recognition together, with per-hand labels, handedness, and the app reacting to the recognized gesture. |
+
+Both take video from `ofVideoGrabber`, falling back to a still image in
+`bin/data` so they are demonstrable without a camera.
+
+`apps/myApps/MediaPipeExample` is the fuller application: it runs both models
+and auto-detects its video source across a Pi CSI camera, a USB webcam, a movie
+file, a still image, or synthetic frames, reporting on screen why each source
+was rejected.

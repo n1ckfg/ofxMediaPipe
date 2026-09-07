@@ -7,7 +7,14 @@
 - `scripts/build_mediapipe.sh` builds and installs the library, headers and
   models end to end.
 - `ofxMediaPipe::Tracker` runs both models on a worker thread.
-- Example app at `apps/myApps/MediaPipeExample`.
+- `examples/example_pose` — pose tracking on its own.
+- `examples/example_gesture` — pose tracking and gesture recognition together.
+- `apps/myApps/MediaPipeExample` — the fuller app, with video-source auto-detection.
+
+Verified on a Raspberry Pi 4 (aarch64, GCC 12, OpenCV 4.6, MediaPipe v0.10.35):
+both models load and detect correctly, checked against MediaPipe's own test
+images (`thumb_up.jpg` -> `Thumb_Up`, `victory.jpg` -> `Victory`,
+`fist.jpg` -> `Closed_Fist`, plus 33/21 landmark counts).
 
 ## Not implemented
 
