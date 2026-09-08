@@ -134,7 +134,7 @@ Three programs exercise this, in increasing order of complexity:
 | Where | Uses |
 |---|---|
 | `examples/example_pose` | `Tracker` with gesture disabled; `drawPose`; landmark lookup by `PoseLandmarkIndex`. |
-| `examples/example_gesture` | Both models; `Hand::gesture` and `Hand::handedness`; per-hand tinting. |
+| `examples/example_gesture` | `Tracker` with pose disabled; `Hand::gesture` and `Hand::handedness`; per-hand tinting. |
 | `apps/myApps/MediaPipeExample` | The above, plus a `VideoSource` that auto-detects a Pi CSI camera, a USB webcam, a movie, a still, or synthetic frames. |
 
 The examples take video from `ofVideoGrabber` with a still-image fallback, which

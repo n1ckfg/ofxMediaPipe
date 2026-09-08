@@ -3,14 +3,15 @@
 #include "ofMain.h"
 #include "ofxMediaPipe.h"
 
-/// Pose tracking and gesture recognition together on one feed.
+/// Gesture recognition on a live feed.
 ///
-/// The body is drawn as a 33-point skeleton; each hand is drawn as a 21-point
-/// skeleton tinted by whichever gesture the model recognized, and the app
-/// reacts to that gesture rather than only printing it.
+/// Each hand is drawn as a 21-point skeleton tinted by whichever gesture the
+/// model recognized, and the app reacts to that gesture rather than only
+/// printing it.
 ///
-/// Both models share one worker thread inside ofxMediaPipe::Tracker, so a pass
-/// costs pose time plus gesture time. That is the price of running both.
+/// Only the gesture model is loaded: ofxMediaPipe::Tracker's worker thread runs
+/// whatever Settings enables, so leaving pose off keeps a pass to gesture time
+/// alone. See examples/example_pose for the other model on its own.
 class ofApp : public ofBaseApp {
 public:
 	void setup() override;
@@ -40,12 +41,11 @@ private:
 	/// hard flicker when the classifier changes its mind between frames.
 	ofFloatColor reactionColor { 0.07f, 0.07f, 0.07f };
 
-	/// Set once the models are ready; the still is fed until it passes, so
+	/// Set once the model is ready; the still is fed until it passes, so
 	/// VIDEO-mode tracking has time to settle. 0 means "not ready yet".
 	float stillSettleDeadline = 0.f;
 
 	ofTrueTypeFont font;
 	ofTrueTypeFont fontLarge;
 	bool mirror = true;
-	bool showPose = true;
 };

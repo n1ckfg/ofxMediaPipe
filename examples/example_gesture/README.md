@@ -1,11 +1,14 @@
 # example_gesture
 
-Pose tracking and gesture recognition running together on one feed.
+Gesture recognition on one feed.
 
-The body is drawn as a 33-point skeleton. Each hand is drawn as a 21-point
-skeleton tinted by whichever gesture was recognized, labelled with the gesture,
-its confidence, and which hand it is. The window background also reacts to the
-winning gesture, to show the result being *used* rather than just printed.
+Each hand is drawn as a 21-point skeleton tinted by whichever gesture was
+recognized, labelled with the gesture, its confidence, and which hand it is. The
+window background also reacts to the winning gesture, to show the result being
+*used* rather than just printed.
+
+For the body skeleton, see `example_pose`; for both models at once, see
+`apps/myApps/MediaPipeExample`.
 
 ## Build and run
 
@@ -14,8 +17,8 @@ make -j3
 make run
 ```
 
-Both `bin/data/pose_landmarker_lite.task` and `bin/data/gesture_recognizer.task`
-must be present; they are already copied here.
+`bin/data/gesture_recognizer.task` must be present; it is already copied here.
+The pose model is not needed.
 
 ## The gestures
 
@@ -31,9 +34,10 @@ the classifier must be before a label is reported at all.
 
 ## What it shows
 
-- Running both models on one worker thread, and what that costs: a pass is pose
-  time *plus* gesture time (~115 ms + ~240 ms on a Raspberry Pi 4, so roughly
-  2-3 passes/sec — the HUD reports it).
+- Running one model on the tracker's worker thread. `Settings::enablePose` is
+  left `false`, so that model is never loaded and costs nothing per pass: a pass
+  is gesture time alone (~240 ms on a Raspberry Pi 4, so roughly 4 passes/sec —
+  the HUD reports it).
 - Reading `Hand::gesture` and `Hand::handedness` as `ofxMediaPipe::Category`,
   including the confidence score.
 - Colouring each hand independently, so two hands showing different gestures
@@ -55,6 +59,5 @@ movie-file and synthetic sources with auto-detection.
 
 | Key | Action |
 |---|---|
-| `p` | toggle the pose skeleton |
 | `m` | toggle mirroring |
 | `f` | fullscreen |

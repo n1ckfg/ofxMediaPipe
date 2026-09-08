@@ -155,7 +155,7 @@ ofxMediaPipe/
 | Example | Shows |
 |---|---|
 | `examples/example_pose` | Basic pose tracking — 33 landmarks, reading individual joints by name, skipping occluded ones. |
-| `examples/example_gesture` | Pose tracking *and* gesture recognition together, with per-hand labels, handedness, and the app reacting to the recognized gesture. |
+| `examples/example_gesture` | Gesture recognition on its own — per-hand labels, handedness, and the app reacting to the recognized gesture. |
 
 Both take video from `ofVideoGrabber`, falling back to a still image in
 `bin/data` so they are demonstrable without a camera.

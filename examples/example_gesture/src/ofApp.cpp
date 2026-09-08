@@ -28,7 +28,7 @@ std::string prettify(std::string name) {
 } // namespace
 
 void ofApp::setup() {
-	ofSetWindowTitle("ofxMediaPipe - pose + gesture");
+	ofSetWindowTitle("ofxMediaPipe - gesture");
 	ofSetFrameRate(60);
 	ofSetVerticalSync(true);
 	font.load(OF_TTF_SANS, 11, true, true);
@@ -37,10 +37,10 @@ void ofApp::setup() {
 	setupVideo();
 
 	ofxMediaPipe::Tracker::Settings settings;
-	settings.enablePose = true;
+	// Pose is left off, so the worker neither loads that model nor spends any
+	// time on it per pass -- a pass costs gesture time alone.
+	settings.enablePose = false;
 	settings.enableGesture = true;
-	settings.pose.modelPath = "pose_landmarker_lite.task";
-	settings.pose.numPoses = 1;
 	settings.gesture.modelPath = "gesture_recognizer.task";
 	settings.gesture.numHands = 2;
 	// Gestures scoring below this are reported as "None" rather than guessed at.
@@ -95,9 +95,9 @@ void ofApp::update() {
 			texture.loadData(frame);
 		}
 	} else if (frame.isAllocated()) {
-		// A still is fed until the models have been ready for a few seconds.
-		// Both tasks run in VIDEO mode, which refines the answer across frames,
-		// so one cold-start pass understates them -- but feeding an unchanging
+		// A still is fed until the model has been ready for a few seconds.
+		// The task runs in VIDEO mode, which refines the answer across frames,
+		// so one cold-start pass understates it -- but feeding an unchanging
 		// image forever would pin a core recomputing the same result. Timing off
 		// isReady() rather than app start avoids racing the model load, which
 		// takes a few seconds on its own.
@@ -161,17 +161,6 @@ void ofApp::draw() {
 		texture.draw(bounds);
 	}
 
-	if (showPose) {
-		ofxMediaPipe::DrawStyle poseStyle;
-		poseStyle.boneColor = ofColor(0, 220, 190);
-		poseStyle.jointColor = ofColor(255, 255, 255, 200);
-		poseStyle.boneWidth = 3.f;
-		poseStyle.jointRadius = 4.f;
-		for (const auto & pose : results.poses) {
-			ofxMediaPipe::drawPose(pose, bounds, poseStyle);
-		}
-	}
-
 	// Each hand is tinted by its own gesture, so two hands can differ.
 	for (const auto & hand : results.hands) {
 		ofxMediaPipe::DrawStyle handStyle;
@@ -227,21 +216,18 @@ void ofApp::drawHud() {
 		std::string("source:  ") + (usingGrabber ? "webcam" : "still image in bin/data"),
 	};
 	if (tracker.isFailed()) {
-		lines.push_back("models:  FAILED - " + tracker.getError());
+		lines.push_back("model:   FAILED - " + tracker.getError());
 	} else if (!tracker.isReady()) {
-		lines.push_back("models:  loading...");
+		lines.push_back("model:   loading...");
 	} else {
-		lines.push_back("pose:    " + ofToString(results.poses.size()) + " detected, "
-			+ ofToString(results.poseMs, 0) + " ms");
 		lines.push_back("gesture: " + ofToString(results.hands.size()) + " hand(s), "
 			+ ofToString(results.gestureMs, 0) + " ms");
 		lines.push_back("rate:    " + ofToString(tracker.getInferenceFps(), 1)
-			+ " passes/sec (both models)");
+			+ " passes/sec");
 	}
 	lines.push_back("display: " + ofToString(ofGetFrameRate(), 0) + " fps");
 	lines.push_back("");
-	lines.push_back("[p] pose " + std::string(showPose ? "on" : "off")
-		+ "   [m] mirror   [f] fullscreen");
+	lines.push_back("[m] mirror   [f] fullscreen");
 
 	float width = 0.f;
 	for (const auto & line : lines) {
@@ -272,7 +258,6 @@ void ofApp::drawHud() {
 
 void ofApp::keyPressed(int key) {
 	switch (key) {
-	case 'p': showPose = !showPose; break;
 	case 'm': mirror = !mirror; break;
 	case 'f': ofToggleFullscreen(); break;
 	default: break;
