@@ -26,3 +26,14 @@ linux64:
 
 linuxaarch64:
 	ADDON_LIBS = libs/mediapipe/lib/linuxaarch64/libmediapipe_tasks_vision.so
+
+osx:
+	ADDON_LIBS = libs/mediapipe/lib/osx/libmediapipe_tasks_vision.dylib
+
+	# The dylib records its install name as @rpath/..., so the application has
+	# to say where to look. The two layouts differ: make copies addon dylibs
+	# beside the .app in bin/, which is three levels up from the executable
+	# inside the bundle, while the Xcode projects copy it into the bundle's own
+	# Frameworks directory. Naming both keeps either build runnable.
+	ADDON_LDFLAGS = -Wl,-rpath,@executable_path/../../..
+	ADDON_LDFLAGS += -Wl,-rpath,@executable_path/../Frameworks

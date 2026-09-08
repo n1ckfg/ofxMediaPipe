@@ -32,11 +32,72 @@ So the build script adds its own Bazel target,
 `*_c_lib` targets of both tasks (they are marked `alwayslink = 1`, so their
 symbols survive). One library, one runtime.
 
+## One library per platform
+
+The prebuilt library is not portable, so `libs/mediapipe/lib/` is keyed by
+openFrameworks' own platform name — `linuxaarch64`, `linux64`, `osx` — and
+`addon_config.mk` has a section per platform. A missing section is not a
+compile error: the MediaPipe C headers are platform-neutral and checked in, so
+the addon's `.cpp` files build happily on a platform whose library was never
+built, and the absence only surfaces as an undefined `Mp*` symbol for every C
+API function at application link time.
+
+`build_mediapipe.sh` decides the platform from `uname -s` *before* `uname -m`,
+because `arm64` means a Raspberry Pi under Linux and an Apple Silicon Mac under
+Darwin. Getting that order wrong overwrites one platform's library with the
+other's.
+
+The two object formats want different things:
+
+| | Linux | macOS |
+|---|---|---|
+| File | `libmediapipe_tasks_vision.so` | `libmediapipe_tasks_vision.dylib` |
+| Identity | `-Wl,-soname=` | `-Wl,-install_name,@rpath/` |
+| Found via | `$ORIGIN` rpath, library beside the binary | `@rpath`, resolved by the app's `LC_RPATH` |
+
+On macOS the `@rpath` install name is the piece that makes the library
+relocatable: the app records where to look, and the addon supplies two search
+paths for the two layouts openFrameworks produces. `make` copies addon dylibs to
+`bin/`, three levels above the executable inside the `.app`; the Xcode projects
+copy the dylib into the bundle's own `Contents/Frameworks`. `addon_config.mk`
+names both, so either build runs.
+
+The Xcode projects link the dylib by **full path in `OTHER_LDFLAGS`**, the same
+way they already link `openFrameworks.a`, and deliberately do not put it in the
+Frameworks build phase. Xcode reduces a dylib there to
+`-lmediapipe_tasks_vision` and leaves `ld` to find it on the library search
+path — which includes the project's own `bin/`, where openFrameworks drops a
+copy. A Linux `libmediapipe_tasks_vision.so` left in `bin/` therefore wins the
+search and fails the link with `unknown file type`. A full path has no search
+order to get wrong.
+
 ## What the build patches, and why
 
 MediaPipe's tree does not build unmodified against a Debian/Raspberry Pi OS
-toolchain. `scripts/build_mediapipe.sh` applies two patches; both are upstream
-portability gaps, not local preferences.
+toolchain, nor against a Homebrew macOS one. `scripts/build_mediapipe.sh`
+applies the patches each host needs; all of them are upstream portability gaps,
+not local preferences.
+
+The Linux patches are below. macOS needs neither of them — Clang is what
+upstream builds with — but it does need OpenCV repointed, because
+`third_party/opencv_macos.BUILD` ships configured for an OpenCV **3** installed
+by an **Intel** Homebrew: `PREFIX = "opt/opencv@3"`, headers globbed from
+`include/opencv2`, and a `macos_opencv` repository rooted at `/usr/local` in
+`WORKSPACE`. Apple Silicon has none of that. The script sets the repository root
+to `brew --prefix` and rewrites the prefix and header globs to the OpenCV 4
+layout — the same edit the comment block at the top of that file prescribes. It
+uses Homebrew's version-independent `opt/opencv` symlink rather than a `Cellar`
+path, so no OpenCV version is pinned into the build.
+
+macOS also needs `--config=darwin_arm64` (or `darwin_x86_64`). MediaPipe's
+`platform_mappings` only resolves an Apple toolchain when `--cpu` and
+`--apple_platform_type` are both set, which is exactly what those `.bazelrc`
+configs do.
+
+One more portability detail worth knowing, since it silently corrupts a patch
+rather than failing: BSD `sed` requires an explicit backup suffix after `-i`,
+GNU `sed` forbids one written that way. Every in-place edit goes through a
+`sed_i` wrapper.
 
 **`third_party/opencv_linux.BUILD` — OpenCV 4 paths.** The file targets the
 OpenCV 3 layout and ships with the OpenCV 4 header globs commented out. Debian

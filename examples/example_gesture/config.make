@@ -2,7 +2,7 @@
 # CONFIGURE PROJECT MAKEFILE (optional)
 ################################################################################
 
-# OF_ROOT = ../../../..
+OF_ROOT = ../../../..
 # PROJECT_ROOT = .
 # PROJECT_DEFINES =
 

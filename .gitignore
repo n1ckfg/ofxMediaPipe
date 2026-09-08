@@ -25,6 +25,12 @@ apps/*
 !/libs/openFrameworks
 !/libs/openFrameworksCompiled
 
+# This addon keeps its prebuilt MediaPipe under libs/, which the rule above
+# would otherwise hide. The linuxaarch64 library only survives in the history
+# because it was added with -f; naming it here means the osx one, and any
+# future platform, does not need that.
+!/libs/mediapipe
+
 # also, see examples/.gitignore
 
 #########################

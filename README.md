@@ -27,10 +27,10 @@ cd addons/ofxMediaPipe
 ./scripts/build_mediapipe.sh
 ```
 
-The script fetches Bazel (the exact version MediaPipe pins in `.bazelversion`)
-and the MediaPipe sources, applies two portability patches to that checkout,
-builds the library, then installs the library, its headers and the two `.task`
-models into `libs/mediapipe/`. Options:
+The script detects the host, fetches Bazel (the exact version MediaPipe pins in
+`.bazelversion`) and the MediaPipe sources, patches that checkout for the
+platform, builds the library, then installs the library, its headers and the two
+`.task` models into `libs/mediapipe/`. Options:
 
 ```
 --version v0.10.35   MediaPipe tag to build
@@ -38,18 +38,29 @@ models into `libs/mediapipe/`. Options:
 --keep-src           keep the Bazel cache and sources afterwards
 ```
 
-Requirements: `git`, `curl`, `python3` with `numpy`, `g++`, and OpenCV 4
-(`apt install libopencv-dev python3-numpy`). Budget a few hours and ~20 GB of
-free disk on a Raspberry Pi 4; 8 GB of RAM is comfortable at `--jobs 3`.
+It has to be run once per platform. The output lands in a platform directory —
+`libs/mediapipe/lib/linuxaarch64/`, `.../linux64/` or `.../osx/` — so a Pi and a
+Mac can share one checkout without overwriting each other.
 
-The two patches are to MediaPipe's own tree, not to this addon, and both are
-upstream portability gaps rather than preferences: OpenCV 4's header paths are
-commented out in `third_party/opencv_linux.BUILD`, and `CompileTimeString` does
-not compile under GCC. Skipping the second one costs you a two-hour build that
-fails near the end. ARCHITECTURE.md explains both.
+| Host | Requirements | Result |
+|---|---|---|
+| Linux | `git`, `curl`, `python3`+`numpy`, `g++`, OpenCV 4 (`apt install libopencv-dev python3-numpy`) | `libmediapipe_tasks_vision.so` |
+| macOS | `git`, `curl`, `python3`+`numpy`, Xcode command line tools, Homebrew OpenCV 4 (`brew install opencv`) | `libmediapipe_tasks_vision.dylib` |
+
+Budget a few hours and ~20 GB of free disk on a Raspberry Pi 4; 8 GB of RAM is
+comfortable at `--jobs 3`. A Mac is considerably faster and can take a higher
+`--jobs`.
+
+The patches are to MediaPipe's own tree, not to this addon, and all of them are
+upstream portability gaps rather than preferences. On Linux: OpenCV 4's header
+paths are commented out in `third_party/opencv_linux.BUILD`, and
+`CompileTimeString` does not compile under GCC — skipping that second one costs
+you a two-hour build that fails near the end. On macOS: `opencv_macos.BUILD` and
+`WORKSPACE` are pinned to an OpenCV 3 under an Intel Homebrew prefix.
+ARCHITECTURE.md explains all of them.
 
 Verified with MediaPipe v0.10.35 on aarch64 (Raspberry Pi OS bookworm, GCC 12,
-OpenCV 4.6). Nothing here is Pi-specific except the platform name in
+OpenCV 4.6). Nothing there is Pi-specific except the platform name in
 `addon_config.mk`; `linux64` is wired up the same way.
 
 Then copy the models next to your app:
