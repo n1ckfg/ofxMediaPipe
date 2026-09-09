@@ -57,13 +57,7 @@ void Tracker::setPixels(const ofPixels & pixels) {
 	{
 		std::lock_guard<std::mutex> lock(inputMutex);
 		// Overwrite whatever is pending: only the newest frame is worth running.
-		if (settings.inferenceWidth > 0 && pixels.getWidth() > (size_t)settings.inferenceWidth) {
-			const float scale = settings.inferenceWidth / (float)pixels.getWidth();
-			input = pixels;
-			input.resize(settings.inferenceWidth, std::max(1, (int)std::round(pixels.getHeight() * scale)));
-		} else {
-			input = pixels;
-		}
+		input = pixels;
 		hasInput = true;
 	}
 	inputReady.notify_one();
@@ -119,6 +113,11 @@ void Tracker::threadedFunction() {
 			}
 			frame = input;
 			hasInput = false;
+		}
+
+		if (settings.inferenceWidth > 0 && frame.getWidth() > (size_t)settings.inferenceWidth) {
+			const float scale = settings.inferenceWidth / (float)frame.getWidth();
+			frame.resize(settings.inferenceWidth, std::max(1, (int)std::round(frame.getHeight() * scale)));
 		}
 
 		Results results;
